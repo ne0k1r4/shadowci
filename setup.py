@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="shadowci",
-    version="1.2.0",
+    version="2.0.0",
     author="ne0k1ra",
     description="Repository Security Intelligence Scanner",
     long_description=open("README.md").read() if __import__("os").path.exists("README.md") else "",

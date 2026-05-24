@@ -12,17 +12,21 @@ from .scanners.gitignore_check import scan_gitignore
 from .scanners.dependencies   import scan_dependencies
 from .scanners.kubernetes     import scan_kubernetes
 from .scanners.permissions    import scan_permissions
+from .scanners.sast           import scan_sast
+from .scanners.supply_chain   import scan_supply_chain
 
 ALL_SCANNERS = [
-    ("secrets",    "Secrets",             scan_secrets),
-    ("dockerfile", "Dockerfile",          scan_dockerfile),
-    ("workflows",  "GitHub Workflows",    scan_github_workflows),
-    ("env",        "Env Files",           scan_env_files),
-    ("terraform",  "Terraform",           scan_terraform),
-    ("gitignore",  ".gitignore Coverage", scan_gitignore),
-    ("deps",       "Dependencies",        scan_dependencies),
-    ("kubernetes", "Kubernetes",          scan_kubernetes),
-    ("permissions","File Permissions",    scan_permissions),
+    ("secrets",       "Secrets",             scan_secrets),
+    ("dockerfile",    "Dockerfile",          scan_dockerfile),
+    ("workflows",     "GitHub Workflows",    scan_github_workflows),
+    ("env",           "Env Files",           scan_env_files),
+    ("terraform",     "Terraform",           scan_terraform),
+    ("gitignore",     ".gitignore Coverage", scan_gitignore),
+    ("deps",          "Dependencies",        scan_dependencies),
+    ("kubernetes",    "Kubernetes",          scan_kubernetes),
+    ("permissions",   "File Permissions",    scan_permissions),
+    ("sast",          "SAST Lite",           scan_sast),
+    ("supply_chain",  "Supply Chain",        scan_supply_chain),
 ]
 
 

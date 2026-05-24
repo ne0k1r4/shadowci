@@ -132,4 +132,46 @@ def scan_github_workflows(path: str) -> List[Finding]:
                             remediation=f"Pin to a full commit SHA: uses: {uses.split('@')[0]}@<sha256>  # {ref}",
                         ))
 
+                # Script injection via github.event expressions
+                if isinstance(run_cmd, str):
+                    injection_patterns = [
+                        r'\$\{\{.*github\.event\.(?:head_commit\.message|pull_request\.title|pull_request\.body|issue\.title|issue\.body|comment\.body)',
+                        r'\$\{\{.*github\.head_ref',
+                        r'\$\{\{.*github\.event\.inputs\.',
+                    ]
+                    for pat in injection_patterns:
+                        if re.search(pat, run_cmd, re.IGNORECASE):
+                            findings.append(Finding(
+                                severity="CRITICAL",
+                                message=f"Workflow '{wf_name}' — script injection via github.event expression",
+                                file=rel, scanner="workflows",
+                                detail="Using ${{ github.event.* }} directly in run: scripts allows injection attacks from PR titles, commit messages, etc.",
+                                remediation="Pass values as env vars: env: TITLE: ${{ github.event.pull_request.title }} then use $TITLE in shell.",
+                            ))
+                            break
+
+                # Secrets in environment exposed to untrusted code
+                env = step.get('env', {}) or {}
+                if isinstance(env, dict):
+                    for env_key, env_val in env.items():
+                        if isinstance(env_val, str) and 'secrets.' in env_val:
+                            if any(t in (on if isinstance(on, dict) else {}) for t in ('pull_request_target', 'issue_comment')):
+                                findings.append(Finding(
+                                    severity="CRITICAL",
+                                    message=f"Workflow '{wf_name}' exposes secret to untrusted trigger",
+                                    file=rel, scanner="workflows",
+                                    detail=f"Secret {env_val} exposed in {env_key} for pull_request_target/issue_comment — attacker can exfiltrate.",
+                                    remediation="Never expose secrets in workflows triggered by untrusted external events.",
+                                ))
+
+            # OIDC token permissions check
+            if job.get('id-token') == 'write':
+                findings.append(Finding(
+                    severity="MEDIUM",
+                    message=f"Workflow job '{job_id}' requests id-token: write (OIDC)",
+                    file=rel, scanner="workflows",
+                    detail="OIDC tokens allow cloud authentication. Ensure this is scoped correctly.",
+                    remediation="Restrict id-token: write to only jobs that need cloud authentication.",
+                ))
+
     return findings

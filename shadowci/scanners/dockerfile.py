@@ -88,4 +88,86 @@ def scan_dockerfile(path: str) -> List[Finding]:
                     remediation="Use Docker BuildKit secrets: RUN --mount=type=secret,id=mykey ...",
                 ))
 
+            # ── New checks ────────────────────────────────────────────────────
+
+            # No HEALTHCHECK defined (check at file level after loop)
+            if re.match(r'^RUN\s+chmod\s+(777|0777|a\+rwx)', stripped, re.IGNORECASE):
+                findings.append(Finding(
+                    severity="HIGH",
+                    message="Dockerfile sets world-writable permissions (chmod 777)",
+                    file=rel, scanner="dockerfile", line=lineno,
+                    detail="chmod 777 allows any process to modify files — privilege escalation risk.",
+                    remediation="Use minimal permissions. chmod 755 for executables, 644 for files.",
+                ))
+
+            if re.match(r'^RUN\s+.*apt-get\s+install.*--no-install-recommends', stripped, re.IGNORECASE) is None and \
+               re.match(r'^RUN\s+.*apt-get\s+install', stripped, re.IGNORECASE):
+                findings.append(Finding(
+                    severity="LOW",
+                    message="apt-get install missing --no-install-recommends",
+                    file=rel, scanner="dockerfile", line=lineno,
+                    detail="Without --no-install-recommends, extra packages bloat the image and increase attack surface.",
+                    remediation="Use: apt-get install -y --no-install-recommends <packages>",
+                ))
+
+            if re.match(r'^COPY\s+\.\s+\.', stripped, re.IGNORECASE) or \
+               re.match(r'^ADD\s+\.\s+\.', stripped, re.IGNORECASE):
+                findings.append(Finding(
+                    severity="MEDIUM",
+                    message="Dockerfile copies entire build context into image",
+                    file=rel, scanner="dockerfile", line=lineno,
+                    detail="Copying '.' may include .env, .git, secrets, and other sensitive files.",
+                    remediation="Use a .dockerignore file. Copy only what's needed: COPY src/ /app/src/",
+                ))
+
+            if re.match(r'^RUN\s+.*pip\s+install(?!\s+--no-cache-dir)', stripped, re.IGNORECASE) and \
+               '--no-cache-dir' not in stripped:
+                findings.append(Finding(
+                    severity="LOW",
+                    message="pip install missing --no-cache-dir",
+                    file=rel, scanner="dockerfile", line=lineno,
+                    detail="Without --no-cache-dir, pip stores cache in the image layer, increasing size.",
+                    remediation="Use: pip install --no-cache-dir <packages>",
+                ))
+
+            if re.match(r'^RUN\s+.*sudo\b', stripped, re.IGNORECASE):
+                findings.append(Finding(
+                    severity="MEDIUM",
+                    message="Dockerfile uses sudo in RUN instruction",
+                    file=rel, scanner="dockerfile", line=lineno,
+                    detail="Using sudo in Dockerfiles is a sign of incorrect user management.",
+                    remediation="Run as root during build with USER root, then switch back to appuser.",
+                ))
+
+            if re.match(r'^RUN\s+.*wget\s+.*-O\s+-\s*\|\s*sh', stripped, re.IGNORECASE) or \
+               re.match(r'^RUN\s+.*curl\s+.*-o\s+-\s*\|\s*sh', stripped, re.IGNORECASE):
+                findings.append(Finding(
+                    severity="CRITICAL",
+                    message="Dockerfile pipes downloaded content directly to shell",
+                    file=rel, scanner="dockerfile", line=lineno,
+                    detail="Piping downloads to shell is a supply chain attack vector.",
+                    remediation="Download to file, verify checksum, then execute separately.",
+                ))
+
+        # File-level checks
+        full_content = "".join(lines).upper()
+        if "HEALTHCHECK" not in full_content:
+            findings.append(Finding(
+                severity="LOW",
+                message="Dockerfile missing HEALTHCHECK instruction",
+                file=rel, scanner="dockerfile", line=0,
+                detail="Without HEALTHCHECK, Docker can't detect unhealthy containers automatically.",
+                remediation="Add: HEALTHCHECK --interval=30s CMD curl -f http://localhost/ || exit 1",
+            ))
+
+        if "USER " not in full_content or full_content.count("USER ROOT") > 0:
+            if "USER ROOT" in full_content and full_content.rfind("USER ROOT") > full_content.rfind("USER "):
+                findings.append(Finding(
+                    severity="HIGH",
+                    message="Dockerfile final USER is root",
+                    file=rel, scanner="dockerfile", line=0,
+                    detail="Container runs as root — enables container breakout.",
+                    remediation="Add non-root user before final CMD/ENTRYPOINT.",
+                ))
+
     return findings
