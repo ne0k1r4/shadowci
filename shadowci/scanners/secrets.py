@@ -328,8 +328,7 @@ SKIP_EXTENSIONS = {
 }
 SKIP_DIRS = {
     '.git','node_modules','__pycache__','.venv','venv',
-    'dist','build','.terraform','.eggs','*.egg-info',
-, 'scanners'}
+    'dist','build','.terraform','.eggs','*.egg-info', 'scanners'}
 
 
 def scan_secrets(path: str) -> List[Finding]:

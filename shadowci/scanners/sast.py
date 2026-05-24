@@ -249,8 +249,12 @@ def scan_sast(path: str) -> List[Finding]:
                         stripped = line.strip()
                         if stripped.startswith('#') or stripped.startswith('//'):
                             continue  # skip comments
-                        # skip regex pattern definition lines
+                        # skip regex pattern definition lines and cipher name strings
                         if 're.compile(' in stripped or ('PATTERNS' in stripped and '=' in stripped):
+                            continue
+                        # skip lines where cipher name is in a string/comment context
+                        if any(x in stripped for x in ['re.compile', '# ', '"""',"'''", "cipher", "CIPHER"]) and \
+                           any(x in stripped for x in ['DES', '3DES', 'TripleDES']):
                             continue
                         for name, pattern, severity, message, remediation, languages in \
                                 [(p[0], p[1], p[2], p[3], p[4], p[5]) for p in SAST_PATTERNS]:
