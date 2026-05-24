@@ -1,2 +1,0 @@
-[console_scripts]
-shadowci = shadowci.cli:main
