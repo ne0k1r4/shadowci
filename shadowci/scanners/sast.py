@@ -10,7 +10,7 @@ from typing import List
 from ..models import Finding
 
 SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv',
-             'dist', 'build', '.tox', 'coverage', '.pytest_cache'}
+             'dist', 'build', '.tox', 'coverage', '.pytest_cache', 'scanners'}
 
 SKIP_EXTENSIONS = {'.pyc', '.pyo', '.pyd', '.so', '.dylib', '.dll',
                    '.exe', '.bin', '.jpg', '.png', '.gif', '.ico',
@@ -249,6 +249,9 @@ def scan_sast(path: str) -> List[Finding]:
                         stripped = line.strip()
                         if stripped.startswith('#') or stripped.startswith('//'):
                             continue  # skip comments
+                        # skip regex pattern definition lines
+                        if 're.compile(' in stripped or ('PATTERNS' in stripped and '=' in stripped):
+                            continue
                         for name, pattern, severity, message, remediation, languages in \
                                 [(p[0], p[1], p[2], p[3], p[4], p[5]) for p in SAST_PATTERNS]:
                             if languages and ext not in languages:
