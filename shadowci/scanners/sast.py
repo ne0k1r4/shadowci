@@ -10,7 +10,7 @@ from typing import List
 from ..models import Finding
 
 SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv',
-             'dist', 'build', '.tox', 'coverage', '.pytest_cache', 'scanners'}
+             'dist', 'build', 'scanners', '.tox', 'coverage', '.pytest_cache', 'scanners'}
 
 SKIP_EXTENSIONS = {'.pyc', '.pyo', '.pyd', '.so', '.dylib', '.dll',
                    '.exe', '.bin', '.jpg', '.png', '.gif', '.ico',
