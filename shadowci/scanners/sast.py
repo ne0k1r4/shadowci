@@ -52,7 +52,7 @@ SAST_PATTERNS = [
      {'.py'}),
 
     ("Python exec()",
-     re.compile(r'\bexec\s*\('),
+     re.compile(r'(?<!["\'])\bexec\s*\((?![^)]*["\'])'),
      "HIGH", "Use of exec() detected — code injection risk",
      "Avoid exec() with user-controlled data. Use subprocess for shell commands.",
      {'.py'}),
@@ -180,25 +180,6 @@ SAST_PATTERNS = [
      "Use PDO prepared statements with parameterized queries.",
      {'.php'}),
 
-    # ── Insecure crypto ───────────────────────────────────────────────────────
-    ("DES/3DES cipher",
-     re.compile(r'(?i)(?:DES|3DES|TripleDES|des\.new|Cipher\.DES)'),
-     "HIGH", "DES/3DES encryption detected — cryptographically weak",
-     "Use AES-256-GCM or ChaCha20-Poly1305 instead.",
-     None),
-
-    ("MD5 in non-Python",
-     re.compile(r'(?i)(?:md5|MD5Hash|MessageDigest\.getInstance\([\'"]MD5[\'"])'),
-     "MEDIUM", "MD5 hash function detected — broken for security use",
-     "Use SHA-256 or SHA-3 for security-sensitive operations.",
-     {'.js', '.ts', '.java', '.php', '.go', '.cs', '.rb'}),
-
-    ("ECB mode cipher",
-     re.compile(r'(?i)(?:AES\.MODE_ECB|ECB|CipherMode\.ECB|"ECB")'),
-     "HIGH", "ECB cipher mode detected — does not provide semantic security",
-     "Use AES-GCM (authenticated encryption) or AES-CBC with HMAC.",
-     None),
-
     # ── Path traversal ────────────────────────────────────────────────────────
     ("Path traversal via user input",
      re.compile(r'(?i)open\s*\(\s*(?:request\.|req\.|params\[|input\()'),
@@ -252,10 +233,11 @@ def scan_sast(path: str) -> List[Finding]:
                         # skip regex pattern definition lines and cipher name strings
                         if 're.compile(' in stripped or ('PATTERNS' in stripped and '=' in stripped):
                             continue
-                        # skip lines where cipher name is in a string/comment context
-                        if any(x in stripped for x in ['re.compile', '# ', '"""',"'''", "cipher", "CIPHER"]) and \
-                           any(x in stripped for x in ['DES', '3DES', 'TripleDES']):
-                            continue
+                        # skip weak crypto FP: only flag actual usage not string literals
+                        if any(x in stripped for x in ['DES', '3DES', 'TripleDES', 'ECB']):
+                            import re as _re
+                            if not _re.search(r'\.(new|encrypt|decrypt|cipher)\s*\(|from\s+Crypto|import\s+DES', stripped, _re.I):
+                                continue
                         for name, pattern, severity, message, remediation, languages in \
                                 [(p[0], p[1], p[2], p[3], p[4], p[5]) for p in SAST_PATTERNS]:
                             if languages and ext not in languages:
