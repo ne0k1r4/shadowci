@@ -17,7 +17,7 @@ def generate_json_report(findings: List[Finding], target_path: str, output_path:
 
     payload = {
         "shadowci": {
-            "version": "1.0.0",
+            "version": "2.0.0",
             "edition": "Death Note",
             "author": "ne0k1ra",
             "quote": "The human whose name is written in this note shall perish.",

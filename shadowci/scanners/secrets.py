@@ -161,7 +161,7 @@ SECRET_PATTERNS = [
      "Use environment variables or a secrets manager. Run: git filter-repo to purge history."),
 
     ("Basic Auth in URL",
-     re.compile(r'https?://[^:]+:[^@]{3,}@[A-Za-z0-9\.\-]+'),
+     re.compile(r'https?://[^/:]+:[^/@]{3,}@[A-Za-z0-9\.\-]+'),
      "HIGH", "Credentials embedded in URL detected",
      "Remove credentials from URL. Use auth headers or environment variables instead."),
 
@@ -327,8 +327,9 @@ SKIP_EXTENSIONS = {
     '.mp4','.mp3','.avi','.mov','.webm','.webp','.bmp','.tiff',
 }
 SKIP_DIRS = {
-    '.git','node_modules','__pycache__','.venv','venv',
-    'dist','build', 'scanners','.terraform','.eggs','*.egg-info', 'scanners'}
+    '.git', 'node_modules', '__pycache__', '.venv', 'venv',
+    'dist', 'build', 'scanners', '.terraform', '.eggs', '*.egg-info'
+}
 
 
 def scan_secrets(path: str) -> List[Finding]:

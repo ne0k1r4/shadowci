@@ -84,7 +84,7 @@ BANNER = f"""
 {DARK_GREY}  ║{RESET}  {BONE_WHITE}{BOLD}███████║{RESET}{BONE_WHITE}██║  ██║██║  ██║██████╔╝╚██████╔╝╚███╔███╔╝╚██████╗██║{RESET}  {DARK_GREY}║{RESET}
 {DARK_GREY}  ║{RESET}  {ASH_GREY}╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝  ╚═════╝  ╚══╝╚══╝  ╚═════╝╚═╝{RESET}  {DARK_GREY}║{RESET}
 {DARK_GREY}  ║{RESET}                                                                  {DARK_GREY}║{RESET}
-{DARK_GREY}  ║{RESET}  {PALE_GOLD}Repository Security Intelligence Scanner{RESET}   {ASH_GREY}v1.2.0  ne0k1ra{RESET}   {DARK_GREY}║{RESET}
+{DARK_GREY}  ║{RESET}  {PALE_GOLD}Repository Security Intelligence Scanner{RESET}   {ASH_GREY}v2.0.0  ne0k1ra{RESET}   {DARK_GREY}║{RESET}
 {DARK_GREY}  ║{RESET}  {DIM}{ITALIC}「 If you can see it — you can judge it. 」{RESET}                    {DARK_GREY}║{RESET}
 {DARK_GREY}  ╚══════════════════════════════════════════════════════════════════╝{RESET}"""
 
@@ -94,27 +94,35 @@ def _div(char="─", width=66, color=DARK_GREY):
 
 
 def _wrap(text: str, width=60) -> List[str]:
-    words, lines, cur = text.split(), [], []
+    words = text.split()
+    lines = []
+    cur = []
     for w in words:
         if len(' '.join(cur + [w])) > width:
-            lines.append(' '.join(cur)); cur = [w]
+            lines.append(' '.join(cur))
+            cur = [w]
         else:
             cur.append(w)
-    if cur: lines.append(' '.join(cur))
+    if cur:
+        lines.append(' '.join(cur))
     return lines
 
 
 # ── Spinner ───────────────────────────────────────────────────────────────────
 class Spinner:
     def __init__(self, label: str, icon: str = "◈"):
-        self.label = label; self.icon = icon
-        self._stop = threading.Event(); self._thread = None
+        self.label = label
+        self.icon = icon
+        self._stop = threading.Event()
+        self._thread = None
 
     def _spin(self):
-        for f in itertools.cycle(["◐","◓","◑","◒"]):
-            if self._stop.is_set(): break
+        for f in itertools.cycle(["◐", "◓", "◑", "◒"]):
+            if self._stop.is_set():
+                break
             sys.stdout.write(f"\r  {PALE_GOLD}{self.icon}{RESET}  {ASH_GREY}{self.label:<30}{RESET}  {DIM_GOLD}{f}{RESET}  ")
-            sys.stdout.flush(); time.sleep(0.1)
+            sys.stdout.flush()
+            time.sleep(0.1)
 
     def start(self):
         self._thread = threading.Thread(target=self._spin, daemon=True)
@@ -122,7 +130,8 @@ class Spinner:
 
     def stop(self, n: int, elapsed: float):
         self._stop.set()
-        if self._thread: self._thread.join()
+        if self._thread:
+            self._thread.join()
         badge = f"{CRIMSON}{BOLD}[{n} found]{RESET}" if n > 0 else f"{TEAL}[clean]{RESET}"
         sys.stdout.write(f"\r  {PALE_GOLD}{self.icon}{RESET}  {BONE_WHITE}{self.label:<30}{RESET}  {badge}  {DIM}{elapsed:.2f}s{RESET}\n")
         sys.stdout.flush()
@@ -148,7 +157,8 @@ def print_finding(f, fix_hints=False, compact=False):
 
 
 def _risk_bar(score: int) -> str:
-    filled = score // 5; empty = 20 - filled
+    filled = score // 5
+    empty = 20 - filled
     col = CRIMSON if score >= 80 else RUST_ORANGE if score >= 50 else PALE_GOLD if score >= 25 else TEAL
     return f"{col}{'█'*filled}{RESET}{DIM}{'░'*empty}{RESET}  {col}{BOLD}{score}/100{RESET}"
 
@@ -218,24 +228,56 @@ def cmd_scan(args):
 
     target = args.path
     if not os.path.exists(target):
-        print(f"\n  {CRIMSON}{BOLD}[† FATAL]{RESET}  Path not found: {target}\n"); sys.exit(1)
+        print(f"\n  {CRIMSON}{BOLD}[† FATAL]{RESET}  Path not found: {target}\n")
+        sys.exit(1)
 
-    # Validate --only
+    valid_ids = {sid for sid, _, _ in ALL_SCANNERS}
+
+    # Handle --only (supports space-separated via nargs='*' and comma-separated)
     only_ids = None
     if getattr(args, 'only', None):
-        only_ids  = [x.strip() for x in args.only.split(',')]
-        valid_ids = {sid for sid,_,_ in ALL_SCANNERS}
+        only_ids = []
+        for item in args.only:
+            only_ids.extend([x.strip() for x in item.split(',') if x.strip()])
+        
         bad = [x for x in only_ids if x not in valid_ids]
         if bad:
             print(f"\n  {CRIMSON}[ERROR]{RESET}  Unknown scanner(s): {', '.join(bad)}")
-            print(f"  Valid: {', '.join(sorted(valid_ids))}\n"); sys.exit(1)
+            print(f"  Valid: {', '.join(sorted(valid_ids))}\n")
+            sys.exit(1)
 
-    min_sev   = getattr(args, 'severity', None)
-    if min_sev: min_sev = min_sev.upper()
+    # Handle --skip (supports space-separated via nargs='*' and comma-separated)
+    skip_ids = None
+    if getattr(args, 'skip', None):
+        skip_ids = []
+        for item in args.skip:
+            skip_ids.extend([x.strip() for x in item.split(',') if x.strip()])
+        
+        bad = [x for x in skip_ids if x not in valid_ids]
+        if bad:
+            print(f"\n  {CRIMSON}[ERROR]{RESET}  Unknown scanner(s) to skip: {', '.join(bad)}")
+            print(f"  Valid: {', '.join(sorted(valid_ids))}\n")
+            sys.exit(1)
+
+    # Resolve active scanner IDs
+    active_ids = list(valid_ids)
+    if only_ids is not None:
+        active_ids = [x for x in only_ids if x in valid_ids]
+    if skip_ids is not None:
+        active_ids = [x for x in active_ids if x not in skip_ids]
+
+    min_sev = getattr(args, 'severity', None)
+    if min_sev:
+        min_sev = min_sev.upper()
     fix_hints = getattr(args, 'fix_hints', False)
-    compact   = getattr(args, 'no_detail', False)
-    json_out  = getattr(args, 'json', False)
-    no_html   = getattr(args, 'no_html', False)
+    compact = getattr(args, 'no_detail', False)
+    
+    # Format options
+    fmt = getattr(args, 'format', 'text')
+    json_out = getattr(args, 'json', False) or (fmt == 'json')
+    no_html = getattr(args, 'no_html', False)
+    if fmt == 'html':
+        no_html = False
 
     if not json_out:
         print(BANNER)
@@ -253,24 +295,29 @@ def cmd_scan(args):
     timings   = {}
 
     def on_start(sid, name):
-        if json_out: return
+        if json_out:
+            return
         icon = SCANNER_ICONS.get(sid, "◈")
-        sp   = Spinner(name, icon)
-        spinners[sid] = sp; sp.start()
+        sp = Spinner(name, icon)
+        spinners[sid] = sp
+        sp.start()
 
     def on_done(sid, name, n, elapsed):
         timings[sid] = (n, elapsed)
-        if json_out: return
+        if json_out:
+            return
         sp = spinners.get(sid)
-        if sp: sp.stop(n, elapsed)
+        if sp:
+            sp.stop(n, elapsed)
 
     try:
         findings = run_scan(
-            target, only=only_ids, min_severity=min_sev,
+            target, only=active_ids, min_severity=min_sev,
             on_scanner_start=on_start, on_scanner_done=on_done,
         )
     except Exception as e:
-        print(f"  {CRIMSON}{BOLD}[† FATAL]{RESET}  {e}"); sys.exit(1)
+        print(f"  {CRIMSON}{BOLD}[† FATAL]{RESET}  {e}")
+        sys.exit(1)
 
     elapsed = time.time() - t0
 
@@ -288,7 +335,9 @@ def cmd_scan(args):
                         for s in ["CRITICAL","HIGH","MEDIUM","LOW","INFO"]},
             "findings": [f.to_dict() for f in findings],
         }
-        print(json.dumps(payload, indent=2)); sys.exit(1 if any(f.severity in ("CRITICAL","HIGH") for f in findings) else 0)
+        print(json.dumps(payload, indent=2))
+        exit_code = 1 if any(f.severity in ("CRITICAL", "HIGH") for f in findings) else 0
+        sys.exit(exit_code)
 
     print()
     by_sev = {}
@@ -319,7 +368,7 @@ def cmd_scan(args):
     out_dir = getattr(args, 'output_dir', '.') or '.'
     os.makedirs(out_dir, exist_ok=True)
 
-    md_path   = os.path.join(out_dir, "shadowci_report.md")
+    md_path = os.path.join(out_dir, "shadowci_report.md")
     json_path = os.path.join(out_dir, "shadowci_report.json")
     html_path = os.path.join(out_dir, "shadowci_report.html")
 
@@ -335,12 +384,12 @@ def cmd_scan(args):
         print(f"    {DIM}{BONE_WHITE}✦{RESET}  {html_path}")
     print(f"\n  {DIM}{ASH_GREY}「 The names have been written. There is no going back. 」{RESET}\n")
 
-    if any(f.severity in ("CRITICAL","HIGH") for f in findings):
+    if any(f.severity in ("CRITICAL", "HIGH") for f in findings):
         sys.exit(1)
 
 
 def cmd_version(args=None):
-    print(f"\n  {CRIMSON}{BOLD}ShadowCI{RESET}  {ASH_GREY}v1.2.0{RESET}  {DIM}Death Note Edition  |  by ne0k1ra{RESET}")
+    print(f"\n  {CRIMSON}{BOLD}ShadowCI{RESET}  {ASH_GREY}v2.0.0{RESET}  {DIM}Death Note Edition  |  by ne0k1ra{RESET}")
     from .engine import ALL_SCANNERS
     print(f"  {DIM}{len(ALL_SCANNERS)} scanners loaded{RESET}\n")
 
@@ -407,11 +456,13 @@ def main():
     sp = sub.add_parser("scan")
     sp.add_argument("path")
     sp.add_argument("-o", "--output-dir", default=".", metavar="DIR")
-    sp.add_argument("--only",       metavar="SCANNERS")
+    sp.add_argument("--only",       nargs="*", metavar="SCANNERS", help="Run specific scanners only")
+    sp.add_argument("--skip",       nargs="*", metavar="SCANNERS", help="Skip specific scanners")
     sp.add_argument("--severity",   metavar="LEVEL")
+    sp.add_argument("--format",     choices=["text", "html", "json", "markdown"], default="text", help="Output format")
     sp.add_argument("--no-detail",  action="store_true")
     sp.add_argument("--fix-hints",  action="store_true", help="Show remediation steps per finding")
-    sp.add_argument("--json",       action="store_true", help="Output JSON to stdout, no TUI")
+    sp.add_argument("--json",       action="store_true", help="Output JSON to stdout (alias for --format json)")
     sp.add_argument("--no-html",    action="store_true", help="Skip HTML report generation")
 
     sub.add_parser("help")
@@ -420,7 +471,11 @@ def main():
 
     args = p.parse_args()
     cmds = {"scan": cmd_scan, "help": cmd_help, "list": cmd_list, "version": cmd_version}
-    cmds.get(args.command, cmd_help)(args) if args.command in cmds else cmd_help()
+    
+    if args.command in cmds:
+        cmds[args.command](args)
+    else:
+        cmd_help()
 
 
 if __name__ == "__main__":

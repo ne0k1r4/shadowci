@@ -41,7 +41,7 @@ TYPOSQUATS = {
     # JavaScript
     "cross-env2":    "cross-env",
     "lодаsh":        "lodash",
-    "loadash":       "loadash",
+    "loadash":       "lodash",
     "reakt":         "react",
     "expresss":      "express",
     "expresjs":      "express",

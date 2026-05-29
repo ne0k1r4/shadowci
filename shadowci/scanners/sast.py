@@ -6,11 +6,14 @@ insecure deserialization, and other code-level security issues.
 
 import os
 import re
+import ast
 from typing import List
 from ..models import Finding
 
-SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv',
-             'dist', 'build', 'scanners', '.tox', 'coverage', '.pytest_cache', 'scanners'}
+SKIP_DIRS = {
+    '.git', 'node_modules', '__pycache__', '.venv', 'venv',
+    'dist', 'build', 'scanners', '.tox', 'coverage', '.pytest_cache'
+}
 
 SKIP_EXTENSIONS = {'.pyc', '.pyo', '.pyd', '.so', '.dylib', '.dll',
                    '.exe', '.bin', '.jpg', '.png', '.gif', '.ico',
@@ -209,6 +212,173 @@ SAST_PATTERNS = [
 ]
 
 
+class PythonASTScanner(ast.NodeVisitor):
+    def __init__(self, filepath: str, rel_path: str):
+        self.filepath = filepath
+        self.rel_path = rel_path
+        self.findings = []
+
+    def add_finding(self, node, name, severity, message, remediation):
+        self.findings.append(Finding(
+            severity=severity,
+            message=message,
+            file=self.rel_path,
+            scanner="sast",
+            line=getattr(node, 'lineno', 0),
+            detail=f"AST Check: {name} detected",
+            remediation=remediation
+        ))
+
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name):
+            func_name = node.func.id
+            if func_name == 'eval':
+                self.add_finding(
+                    node, "Python eval()", "CRITICAL",
+                    "Use of eval() detected — arbitrary code execution risk",
+                    "Never use eval() on untrusted input. Use ast.literal_eval() for safe evaluation."
+                )
+            elif func_name == 'exec':
+                self.add_finding(
+                    node, "Python exec()", "HIGH",
+                    "Use of exec() detected — code injection risk",
+                    "Avoid exec() with user-controlled data. Use subprocess for shell commands."
+                )
+            elif func_name in ('system', 'popen'):
+                self.add_finding(
+                    node, f"Python os.{func_name}()", "MEDIUM",
+                    f"Use of os.{func_name}() — command injection risk",
+                    "Use subprocess.run() with shell=False instead."
+                )
+        
+        elif isinstance(node.func, ast.Attribute):
+            module_name = ""
+            if isinstance(node.func.value, ast.Name):
+                module_name = node.func.value.id
+            
+            func_name = node.func.attr
+            
+            if module_name == 'os' and func_name in ('system', 'popen'):
+                self.add_finding(
+                    node, f"Python os.{func_name}()", "MEDIUM",
+                    f"Use of os.{func_name}() — command injection risk",
+                    "Use subprocess.run() with shell=False and capture_output=True instead."
+                )
+            elif module_name == 'pickle' and func_name in ('load', 'loads'):
+                self.add_finding(
+                    node, "Python pickle.loads()", "CRITICAL",
+                    "Use of pickle.loads() — arbitrary code execution on deserialization",
+                    "Never deserialize pickle data from untrusted sources. Use JSON or msgpack."
+                )
+            elif module_name == 'marshal' and func_name in ('load', 'loads'):
+                self.add_finding(
+                    node, "Python marshal.loads()", "HIGH",
+                    "Use of marshal.loads() — unsafe deserialization",
+                    "Avoid marshal for untrusted data. Use JSON instead."
+                )
+            elif module_name == 'yaml' and func_name == 'load':
+                has_safe_loader = False
+                for kw in node.keywords:
+                    if kw.arg == 'Loader':
+                        if isinstance(kw.value, ast.Attribute) and getattr(kw.value.value, 'id', '') == 'yaml' and kw.value.attr == 'SafeLoader':
+                            has_safe_loader = True
+                        elif isinstance(kw.value, ast.Name) and kw.value.id == 'SafeLoader':
+                            has_safe_loader = True
+                if not has_safe_loader:
+                    self.add_finding(
+                        node, "Python yaml.load() unsafe", "HIGH",
+                        "yaml.load() without Loader=SafeLoader is unsafe — arbitrary code execution",
+                        "Use yaml.safe_load() or yaml.load(data, Loader=yaml.SafeLoader)"
+                    )
+            elif module_name == 'hashlib' and func_name == 'md5':
+                self.add_finding(
+                    node, "Python hashlib MD5", "MEDIUM",
+                    "MD5 hash function detected — cryptographically broken",
+                    "Use hashlib.sha256() or hashlib.sha3_256() instead."
+                )
+            elif module_name == 'hashlib' and func_name == 'sha1':
+                self.add_finding(
+                    node, "Python hashlib SHA1", "MEDIUM",
+                    "SHA1 hash function detected — weak for security use",
+                    "Use hashlib.sha256() or higher for security-sensitive hashing."
+                )
+            elif module_name == 'subprocess' or (isinstance(node.func.value, ast.Name) and node.func.value.id == 'subprocess'):
+                for kw in node.keywords:
+                    if kw.arg == 'shell' and isinstance(kw.value, ast.Constant) and kw.value.value is True:
+                        self.add_finding(
+                            node, "Python subprocess shell=True", "HIGH",
+                            "subprocess called with shell=True — command injection risk",
+                            "Use shell=False and pass arguments as a list: subprocess.run(['cmd', 'arg'])"
+                        )
+                        break
+
+            if func_name in ('execute', 'executemany') and node.args:
+                first_arg = node.args[0]
+                is_unsafe = False
+                
+                if isinstance(first_arg, ast.JoinedStr):
+                    is_unsafe = True
+                elif isinstance(first_arg, ast.BinOp):
+                    if isinstance(first_arg.op, (ast.Mod, ast.Add)):
+                        is_unsafe = True
+                elif isinstance(first_arg, ast.Call) and isinstance(first_arg.func, ast.Attribute) and first_arg.func.attr == 'format':
+                    is_unsafe = True
+                
+                if is_unsafe:
+                    def find_sql_words(n):
+                        if isinstance(n, ast.Constant) and isinstance(n.value, str):
+                            val = n.value.upper()
+                            return any(w in val for w in ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'DROP'))
+                        elif isinstance(n, ast.JoinedStr):
+                            return any(find_sql_words(val) for val in n.values)
+                        elif isinstance(n, ast.BinOp):
+                            return find_sql_words(n.left) or find_sql_words(n.right)
+                        elif isinstance(n, ast.Call):
+                            return find_sql_words(n.func)
+                        return False
+                    
+                    if find_sql_words(first_arg):
+                        self.add_finding(
+                            node, "SQL f-string/concatenation injection", "CRITICAL",
+                            "Potential SQL injection via dynamic query construction in execute()",
+                            "Never use f-strings, concatenation or % formatting for SQL queries. Use parameterized queries."
+                        )
+
+        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id == 'random':
+            if node.func.attr in ('random', 'randint', 'choice', 'choices', 'sample', 'shuffle'):
+                self.add_finding(
+                    node, "Python random for crypto", "MEDIUM",
+                    "Non-cryptographic random used — may be weak for security",
+                    "Use secrets module for security-sensitive randomness: secrets.token_hex()"
+                )
+
+        self.generic_visit(node)
+
+    def visit_Assign(self, node):
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                var_name = target.id.lower()
+                if any(x in var_name for x in ('password', 'passwd', 'pwd')) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str) and len(node.value.value) >= 4:
+                    self.add_finding(
+                        node, "Hardcoded Password Assignment", "CRITICAL",
+                        "Hardcoded password assignment detected",
+                        "Use environment variables or a secrets manager. Never hardcode passwords."
+                    )
+                elif any(x in var_name for x in ('secret', 'api_secret', 'client_secret')) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str) and len(node.value.value) >= 8:
+                    self.add_finding(
+                        node, "Hardcoded Secret Assignment", "CRITICAL",
+                        "Hardcoded secret detected",
+                        "Store secrets in environment variables or a vault."
+                    )
+                elif any(x in var_name for x in ('token', 'auth_token', 'bearer_token')) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str) and len(node.value.value) >= 20:
+                    self.add_finding(
+                        node, "Hardcoded Token", "HIGH",
+                        "Hardcoded authentication token detected",
+                        "Load tokens from environment variables: os.environ.get('TOKEN')"
+                    )
+        self.generic_visit(node)
+
+
 def scan_sast(path: str) -> List[Finding]:
     """SAST lite scanner — detect dangerous patterns in source code."""
     findings = []
@@ -225,15 +395,25 @@ def scan_sast(path: str) -> List[Finding]:
             rel = os.path.relpath(filepath, path)
 
             try:
+                if ext == '.py':
+                    try:
+                        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                            source = f.read()
+                        tree = ast.parse(source, filename=filepath)
+                        scanner = PythonASTScanner(filepath, rel)
+                        scanner.visit(tree)
+                        findings.extend(scanner.findings)
+                        continue
+                    except SyntaxError:
+                        pass
+
                 with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                     for lineno, line in enumerate(f, 1):
                         stripped = line.strip()
                         if stripped.startswith('#') or stripped.startswith('//'):
-                            continue  # skip comments
-                        # skip regex pattern definition lines and cipher name strings
+                            continue
                         if 're.compile(' in stripped or ('PATTERNS' in stripped and '=' in stripped):
                             continue
-                        # skip weak crypto FP: only flag actual usage not string literals
                         if any(x in stripped for x in ['DES', '3DES', 'TripleDES', 'ECB']):
                             import re as _re
                             if not _re.search(r'\.(new|encrypt|decrypt|cipher)\s*\(|from\s+Crypto|import\s+DES', stripped, _re.I):
