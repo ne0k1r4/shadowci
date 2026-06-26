@@ -52,7 +52,7 @@ def run_scan(
     all_findings: List[Finding] = []
 
     if parallel and len(active) > 1:
-        # Run scanners in parallel — significant speedup on large repos
+        # runs all scanners in parallel with ThreadPoolExecutor, way faster than sequential
         futures = {}
         with ThreadPoolExecutor(max_workers=min(len(active), 6)) as pool:
             for sid, name, fn in active:
@@ -92,6 +92,7 @@ def run_scan(
                 on_scanner_done(sid, name, len(results), elapsed)
             all_findings.extend(results)
 
+    # TODO: add severity deduplication — same secret found by two scanners shows up twice
     all_findings = deduplicate(all_findings)
     if min_severity:
         all_findings = [f for f in all_findings

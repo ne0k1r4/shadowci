@@ -18,6 +18,8 @@ def _find_dockerfiles(path: str) -> List[str]:
 
 
 def scan_dockerfile(path: str) -> List[Finding]:
+    # classic mistakes: running as root, latest tag, curl piped to bash
+    # TODO: check for --no-cache-dir on pip installs
     findings = []
     for df_path in _find_dockerfiles(path):
         rel = os.path.relpath(df_path, path)

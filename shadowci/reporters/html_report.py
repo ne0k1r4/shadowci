@@ -2,6 +2,7 @@
 HTML report generator — professional self-contained HTML report.
 No external dependencies. Pure inline CSS + JS.
 """
+# TODO: add a dark mode toggle, the white bg hurts now
 import os
 import json
 from datetime import datetime
@@ -38,10 +39,10 @@ def _esc(s: str) -> str:
 
 def generate_html_report(findings: List[Finding], target_path: str,
                          output_path: str = "shadowci_report.html") -> str:
-    now          = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    total        = len(findings)
-    risk_score   = calculate_risk_score(findings)
-    abs_target   = os.path.abspath(target_path)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    total = len(findings)
+    risk_score = calculate_risk_score(findings)
+    abs_target = os.path.abspath(target_path)
 
     counts = {s: 0 for s in SEVERITY_ORDER}
     for f in findings:
@@ -50,13 +51,13 @@ def generate_html_report(findings: List[Finding], target_path: str,
     has_critical = counts.get("CRITICAL", 0) > 0
     has_high     = counts.get("HIGH", 0) > 0
     if has_critical or has_high:
-        verdict     = "FAIL"
+        verdict = "FAIL"
         verdict_col = "#ef4444"
     elif counts.get("MEDIUM", 0) > 0:
-        verdict     = "WARNING"
+        verdict = "WARNING"
         verdict_col = "#f59e0b"
     else:
-        verdict     = "PASS"
+        verdict = "PASS"
         verdict_col = "#10b981"
 
     # Group by severity
@@ -70,10 +71,10 @@ def generate_html_report(findings: List[Finding], target_path: str,
         group = by_sev.get(sev, [])
         if not group:
             continue
-        col   = SEVERITY_COLORS.get(sev, "#fff")
-        bg    = SEVERITY_BG.get(sev, "rgba(255,255,255,0.02)")
+        col = SEVERITY_COLORS.get(sev, "#fff")
+        bg = SEVERITY_BG.get(sev, "rgba(255,255,255,0.02)")
         glyph = SEVERITY_GLYPHS.get(sev, "·")
-        cnt   = len(group)
+        cnt = len(group)
 
         cards = ""
         for f in group:
@@ -124,8 +125,8 @@ def generate_html_report(findings: List[Finding], target_path: str,
         c = counts.get(sev, 0)
         if c == 0:
             continue
-        col  = SEVERITY_COLORS.get(sev, "#fff")
-        pct  = min(c * 5, 100)
+        col = SEVERITY_COLORS.get(sev, "#fff")
+        pct = min(c * 5, 100)
         bar_html += f"""
         <div class="bar-row">
           <span class="bar-label" style="color:{col};">{SEVERITY_GLYPHS.get(sev,'·')} {sev}</span>

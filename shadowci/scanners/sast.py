@@ -212,6 +212,8 @@ SAST_PATTERNS = [
 ]
 
 
+# walks the AST so it catches renamed imports too, not just string matching
+# TODO: only does python rn, js support would need a different parser
 class PythonASTScanner(ast.NodeVisitor):
     def __init__(self, filepath: str, rel_path: str):
         self.filepath = filepath

@@ -3,6 +3,8 @@ import re
 from typing import List
 from ..models import Finding
 
+# regex patterns mostly from trufflehog and gitleaks, tweaked a few
+# TODO: add entropy check on top of regex — catches more random-looking keys
 # (name, pattern, severity, message, remediation)
 SECRET_PATTERNS = [
     ("AWS Access Key",
